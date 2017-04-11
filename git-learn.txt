@@ -1,0 +1,221 @@
+git init
+git push https://github.com/deciding/test.git #cannot
+git help config # 4 core lines
+git config --global push.default simple # push to (upstream) same name
+git config --global user.name ""
+git config --global user.email ""
+git add/commit
+git push https://github.com/deciding/test.git master # create new branch master
+git config -l/-e
+git remote add/remove origin https://github.com/deciding/test.git #remote url and fetch ref
+git remote show orgin # show branches
+git fetch #update local mirrors, change FETCH_HEAD branch
+git branch -u/-unset-upstream master # must exec git fetch first
+
+git init --bare # bare repo, have <project name>.git instead of .git, used as central repo
+git clone # already have all the things above!!
+git config --global alias.<alias-name> <git-command>
+git config --system core.editor <editor>
+	/.git/config --- project level
+	~/.gitconfig --- user level, --global
+	$(prefix)/etc/gitconfig --- system level, --system
+
+git add -p # interactive, stage/index area is for user to update changes part by part, not as a whole
+git commit
+
+git status
+.gitignore
+git log
+git log -n <limit>
+git log --oneline
+git log --stat
+git log -p
+git log --author="<pattern>"
+git log --grep="<pattern>" # msg
+git log <since>..<until>
+git log <file>
+git log --graph --decorate --oneline
+	HEAD~3 --- HEAD parent 3
+	git log master..b1 --- commit of b1 but not master
+
+git checkout <commit> # directory must clean, can use stash. entering detached HEAD mode, all changes will lose enless create new branch
+git checkout <branch> # back to branch HEAD commit or create another branch
+
+git checkout <commit> <file> # change+add, git checkout HEAD <file> = git checkout HEAD -- <file> = git checkout -- <file>
+
+git checkout <branch> # checkout existing branch, directory must clean unless they are overlap. use -b to create new branch
+
+rollback:
+git checkout -- <file>
+git revert <commit> # for public branch, create new commit
+git reset <file> # clear cache
+git reset <commit> <file> # change+add+change back
+git reset # clear all cache
+git reset --hard # clear all cache and restore directory
+git reset <commit> # change commit, and clear cache
+git reset --hard <commit> # change commit, clear cache, and restore directory
+git clean -n # remove test
+git clean -f # force remove
+git clean -f <file> # force remove file
+git clean -df # also remove directory
+git clean -xf # also remove .gitignore
+# git rm is same as delete+git add. git clean is to delete untracked files and cannot revert back
+
+edit commits:
+git commit --amend (--no-edit) # change last commit with the stage. can also change message only
+git rebase <main branch> # create new patch in .git/rebase, apply patches to main branch HEAD one by one, resolve conflicts one by one using git add + git rebase --continue, at last use git gc to collect discarded commits. we can use rebase to clean the tree 
+git merge <non-main branch> # if using rebase first, it will be fast forward merge, otherwise if forked, it will be 3-way merge
+git branch -a
+git branch -d <branch>
+git rebase -i <base> # interactive -- squash, change order, change message and so on.
+git reflog (--relative-date) # contains info of the HEAD change. can see the previous discarded commits
+
+git remote
+git remote -v
+git remote add <name> <url>
+git remote rm <name>
+git remote rename <old_name> <new_name>
+git fetch <remote> # in detached HEAD mode if checkout to those commits, fetch remote branches without merge them
+git fetch <remote> <branch>
+git branch -r # show all branches in remote
+git log master..origin/master
+git merge origin/master # the meaning of merge, merge any two branches including remote branches
+git pull # equals to git fetch + git merge origin/.
+git pull --rebase <remote> # use git rebase instead of git merge. the main branch is different for merge and rebase
+git config --global branch.autosetuprebase always # git pull always use rebase
+git push <remote> <branch> # reverse of git fetch + git merge
+git push <remote> --force # if not fast-forward merge, git push will not successful
+git push <remote> --all # push all branches
+git push <remote> --tags
+
+tags:
+git tag <tag_name> # branches are mutable references to commits, and tags are immutable
+git tag -a <tag_object_name> -m "<messages>" # annotated tag with more infos
+git tag # show tags
+git tag -l <pattern>
+git tag -d <name>
+git show <name>
+git describe # --tags for non-annotated, --all for branches
+git push --tags # push will not push tags automatically
+git fetch --tags # otherwise git will onlt fetch tags for this branch
+
+pull request:
+git push -> use github/gitlab to raise pull request for the team -> discuss -> merge, any changes happens on this branch after this pull request will be recorded on pull request
+to accept pull request:
+git checkout master
+git pull # to ensure fresh
+git pull origin feature-branch # use pull instead of merge to ensure fresh
+git push
+Feature flow : shared feature -> shared master 
+Gitflow : shared feature -> shared develop, shared hotfix/release -> shared develop + master
+Fork flow : my feature -> shared master, my feature -> maintainer feature -> shared master
+
+git branch + git checkout + git merge:
+git branch # show branches
+git branch <branch_name> # create branch
+git branch -d <branch> # safe delete, warn if not merged
+git branch -D <branch> # force delete
+git branch -m <branch_name> # rename the current branch
+# branches are just pointers to commits
+git checkout <existing_branch>
+git checkout -b <new_branch>
+git checkout -b <new_branch> <base_branch>
+# git checkout <branch> will just change HEAD pointer, but git checkout <commit> will not use HEAD as current pointer, so it is detached HEAD
+git merge <branch>
+git merge --no-ff <branch> # no fast-forward, always have one merge commit
+#ff merge vs. 3-way merge. 3-way means merge using two HEADs and the lowest common ancestor
+#after resolving git merge conflict, use git add + git commit will create a merge commit
+
+Four Workflows:
+Centralized Workflow : only master branch, can only rebase and linear history
+Feature Workflow : multi branches, pull request # git push -u : set upstream -> just git push next time 
+Gitflow : master and develop branch. # master with version tag
+	develop -> feature -> develop
+	develop -> realease -> master + develop # release-x.xx.x, lock the release for this cycle, master version tag
+	master -> hotfix -> master + develop # master version tag
+Fork Flow : open source, Gitflow branches are pushed to official repo, but Fork Flow branches are pulled from forked repo to "official" repo
+	# Fork Flow need "origin" remote as private repo, and "upsteam" remote as official repo (for pull only)
+	# to accept pull request while there are conflicts, maintainer needs to
+		git fetch <someone's repo> feature-branch
+		git checkout master
+		git merge FETCH_HEAD # same as git merge feature-branch, cannot git pull because branches are with different names
+
+tips:
+# -p can be used for add, commit, checkout, reset
+git diff # stage <-> work
+git diff --cached # HEAD <-> stage
+git diff <branch/commit>
+git diff <commit1> <commit2>
+git checkout will read from stage if no commit reference specified
+git reset --soft <commit> # stage and work all not change
+git cherry-pick <commit> # pick one commit from another branch, instead of merge/rebase to pick many commits
+git rebase --onto <new_parent> <old_parent>
+
+merge vs rebase:
+git merge <sub> <main>
+git push --force # just for replacement of your own branch
+git rebase -i HEAD~n # doesn't move the branch, just recommit
+git merge-base feature master # show the merge base can use the result to apply the above command
+
+reset vs. checkout vs. revert:
+git reset <commit> # use git gc to collect detached commits
+git reset --soft/mixed/hard <commit> # no use to file level
+# git checkout <file> for directory, git reset <file> for stage
+
+git log:
+format:
+	--oneline
+	--decorate # show tag,branch and HEAD
+	--stat,--p,--pickaxe
+	git shortlog # show author, use -n to sort by amount
+	--pretty=format:"<string>"
+filter:
+	git log <branch>
+	git log -n
+	git log --after="2014-7-1", get log --after="yesterday", git log --after="2014-7-1" --before="2014-7-4", --since, --until
+	git log --author="John\|Mary"
+	git log --grep="JRA-224:" # for message content, -i case insensitive
+	git log -- foo.py bar.py # for file name, before -- is branch name
+	git log -S/-G "<string>" # for source code, by string or by pattern
+	git log <branch1>..<branch2> # show all changes between common ancestor to branch2
+	git log --no-merges/--merges # show merge commits or not
+
+git hook:
+# in the .git/hooks folder
+# to install a hook, we need to remove .sample, add shell script, and chmod +x
+# can use any interpreter
+local hooks:
+	pre-commit
+	prepare-commit-msg
+	commit-msg
+	post-commit
+	post-checkout
+	pre-rebase
+server hooks:
+	pre-receive
+	update
+	post-receive
+
+references:
+	SHA-1 hash code:
+		git show <hash>
+		git rev-parse <commit-ref>
+	refs to commit:
+		# in the .git/refs folder
+		# git gc will make the packed-refs
+		special refs:
+			HEAD – 当前所在的提交或分支。
+			FETCH_HEAD – 远程仓库中fetch到的最新一次提交。
+			ORIG_HEAD – HEAD的备份引用，避免损坏。
+			MERGE_HEAD – 你通过git merge并入当前分支的引用(们)。
+			CHERRY_PICK_HEAD – 你cherry pick使用的引用。
+			# how does git know it's deatached HEAD : because it's HEAD is hash not ref
+	respec:
+		# to control remote refs, +<src>:<dst>
+		git push origin <branch>:refs/heads/<branch>
+		git push origin --delete <branch> # = git push origin:<branch>
+	relative ref:
+		~,^n
+	reflog:
+		# find discarded commits
+		git show <commit>
