@@ -1,0 +1,112 @@
+root object:uppermost level of mapping
+	typename
+		properties
+			field
+				type
+				index(analyzed,not_analyzed,no)
+				analyzer
+		_source
+			enabled:true/false(it is a stored field, will waste disk space)
+		_all
+			enabled:true/false
+			-->include_in_all
+			{
+			    "my_type": {
+			        "include_in_all": false,
+			        "properties": {
+			            "title": {
+			                "type":           "string",
+			                "include_in_all": true
+			            },
+			            ...
+			        }
+			    }
+			}
+		_id,_type,_index,_uid settings for each doc
+			_id,_index does not exist(not stored/retrievable, not indexed/searchable)
+			_type indexed not stored,
+			_uid stored and searchable
+
+		#dynamic mapping
+		dynamic strict
+		properties
+			fieldname(can add new field inside)
+				type object
+				dynamic true
+
+		#customize dynamic mapping
+		date_detection false
+
+		"dynamic_templates": [
+                { "es": {
+                      "match":              "*_es", #fieldname match, first come just match
+                      "match_mapping_type": "string", #use default mapping
+                      "mapping": {
+                          "type":           "string",
+                          "analyzer":       "spanish"
+                      }
+                }},
+                { "en": {
+                      "match":              "*", 
+                      "match_mapping_type": "string",
+                      "mapping": {
+                          "type":           "string",
+                          "analyzer":       "english"
+                      }
+                }}
+            ]
+        not only "match", we can use "path_match", "unmatch", "path_unmatch"
+
+#default mapping
+{
+    "mappings": {
+        "_default_": { # only for types come after it
+            "_all": { "enabled":  false }
+        },
+        "blog": {
+            "_all": { "enabled":  true  }
+        }
+    }
+}
+
+#reindex
+to change the field, we cannot edit them, otherwisethe index would break
+bcoz of _source, we don't need to query db again
+use scroll&bulk
+GET /old_index/_search?scroll=1m
+use timestamp to split tasks
+{
+    "query": {
+        "range": {
+            "date": {
+                "gte":  "2014-01-01",
+                "lt":   "2014-02-01"
+            }
+        }
+    },
+    "sort": ["_doc"],
+    "size":  1000
+}
+
+#index alias and zero downtime
+PUT /my_index_v1 
+PUT /my_index_v1/_alias/my_index 
+
+GET /*/_alias/my_index
+GET /my_index_v1/_alias/*
+
+reindex to my_index_v2
+
+POST /_aliases #atomic operation
+{
+    "actions": [
+        { "remove": { "index": "my_index_v1", "alias": "my_index" }},
+        { "add":    { "index": "my_index_v2", "alias": "my_index" }}
+    ]
+}
+
+
+
+
+Inside a shard
+#Making Text Searchable
