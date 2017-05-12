@@ -109,4 +109,62 @@ POST /_aliases #atomic operation
 
 
 Inside a shard
+
 #Making Text Searchable
+every field have an inverted index
+in inverted index, it contains a lot of statistics data
+inside that shard, the inverted index is immutable, every time we add new doc, it will need to index again
+
+#Dynamically Updatable Indices
+use more than one index in the lucene shard to avoid reindex when adding new doc
+lucene use per-segment search
+  segments
+  commit point
+  in-memory buffer
+es index -> shard(lucene index)
+create new doc: commit the buffer(I guess when a search request arrived) using fsync
+delete/update: record in .del file in the commit point, delete these records from search result when there is new search
+
+#Near Real-Time Search
+fsync make it slow to make the new doc searchable
+ES in memory indexing buffer --> new segment(refresh) in filesystem cache--> Disk
+refresh happens every second
+POST /_refresh 
+POST /blogs/_refresh 
+PUT /my_logs
+{
+  "settings": {
+    "refresh_interval": "30s" #2m, -1
+  }
+}
+
+#Making Changes Persistent
+use translog to record the diffs btw two commits
+it stores all the changes thats in the buffer or cache, but haven't been flushed to the disk to avoid server shutdown problems
+translog is cleared after each commit(commit+clear translog=flush)
+flush every 30m or translog too large
+POST /blogs/_flush 
+POST /_flush?wait_for_ongoing
+it's better to flush before close index/node, since it need us to replay the translog when reopen the index
+for fsync the request to translog, it is every 5s and after each request
+
+#Segment Merging
+otherwise will be very slow
+merge segments of similar size in the background
+the lazy deleted docs are not copied
+merged segment at first is not searchable since not refreshed, but it will be flushed
+new commit point created and old segments deleted
+POST /logstash-2014-10/_optimize?max_num_segments=1 
+this is perticularly useful for log, since log hardly changes
+optimize is foreground while automatic merge is background
+
+
+
+
+
+
+
+
+
+
+--Search in Depth
