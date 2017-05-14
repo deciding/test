@@ -168,3 +168,478 @@ optimize is foreground while automatic merge is background
 
 
 --Search in Depth
+
+Structured Search
+structure value, range, compare
+yes or no
+
+#Finding Exact Values
+filter:cache, no score
+term query:
+{
+    "query" : {
+        "constant_score" : { 
+            "filter" : {
+                "term" : { 
+                    "price" : 20
+                }
+            }
+        }
+    }
+}
+when match analyzed with exact value, normally there will be no match, since that exact token is not in the inverted index
+filter workflow:
+search in inverted index --> roaring bitmap --> combine bitset(start from sparse) --> cache for not too small segment
+filter first, scoring later
+
+#Combining filters
+in filter, for bool
+	must: inside is "and"
+	must_not: "not"
+	should: inside is "or"
+	filter: inside is "and" but useless since already in filter
+WHERE  (price = 20 OR productID = "XHDK-A-1293-#fJ3")
+  AND  (price != 30):
+{
+   "query" : {
+      "constant_score" : { 
+         "filter" : {
+            "bool" : {
+              "should" : [
+                 { "term" : {"price" : 20}}, 
+                 { "term" : {"productID" : "XHDK-A-1293-#fJ3"}} 
+              ],
+              "must_not" : {
+                 "term" : {"price" : 30} 
+              }
+           }
+         }
+      }
+   }
+}
+nested query
+WHERE  productID      = "KDKE-B-9947-#kL5"
+  OR (     productID = "JODL-X-1937-#pV7"
+       AND price     = 30 ):
+{
+   "query" : {
+      "constant_score" : {
+         "filter" : {
+            "bool" : {
+              "should" : [
+                { "term" : {"productID" : "KDKE-B-9947-#kL5"}}, 
+                { "bool" : { 
+                  "must" : [
+                    { "term" : {"productID" : "JODL-X-1937-#pV7"}}, 
+                    { "term" : {"price" : 30}} 
+                  ]
+                }}
+              ]
+           }
+         }
+      }
+   }
+}
+
+#Finding Multiple Exact Values
+terms:[], means any field contains one of the data
+term query means contains, not equal to
+if we want contains exact that one data, we may need another field to indicate term count
+
+#Ranges
+{
+    "query" : {
+        "constant_score" : {
+            "filter" : {
+                "range" : {
+                    "price" : {
+                        "gte" : 20,
+                        "lt"  : 40
+                    }
+                }
+            }
+        }
+    }
+}
+time:
+"range" : {
+    "timestamp" : {
+        "gt" : "2014-01-01 00:00:00",
+        "lt" : "2014-01-07 00:00:00"
+    }
+}
+"range" : {
+    "timestamp" : {
+        "gt" : "now-1h"
+    }
+}
+"range" : {
+    "timestamp" : {
+        "gt" : "2014-01-01 00:00:00",
+        "lt" : "2014-01-01 00:00:00||+1M" 
+    }
+}
+string:
+alphabetic order since string inverted index is stored in this order
+string range filter is slower than date/number bcoz it is term filters on each term in the range
+
+#Dealing with Null Values
+exists query:
+{
+    "query" : {
+        "constant_score" : {
+            "filter" : {
+                "exists" : { "field" : "tags" }
+            }
+        }
+    }
+}
+missing query:
+{
+    "query" : {
+        "constant_score" : {
+            "filter": {
+                "missing" : { "field" : "tags" }
+            }
+        }
+    }
+}
+*but the info of null is missed since it's not indexed. to explictly specify null, we use null_value
+for inner objects
+{
+   "name.first" : "John",
+   "name.last"  : "Smith"
+}
+{
+    "exists" : { "field" : "name" }
+}
+is equivalent to 
+{
+    "bool": {
+        "should": [
+            { "exists": { "field": "name.first" }},
+            { "exists": { "field": "name.last" }}
+        ]
+    }
+}
+
+#All About Caching
+filter cache will update with new doc
+{
+  "query": {
+      "constant_score": {
+          "filter": {
+              "bool": {
+                 "should": [
+                    { "bool": {
+                          "must": [
+                             { "term": { "folder": "inbox" }}, #1
+                             { "term": { "read": false }}
+                          ]
+                    }},
+                    { "bool": {
+                          "must_not": {
+                             "term": { "folder": "inbox" } #2
+                          },
+                          "must": {
+                             "term": { "important": true }
+                          }
+                    }}
+                 ]
+              }
+            }
+        }
+    }
+}
+1,2 reuse
+cache behavior: based on usage, only for large segment
+cache eviction: LRU
+
+
+
+
+
+
+Full Text Search
+Relevance+Analysis
+
+#Term-based Versus Full-Text
+Term-based: (low level)no analyze just search the exact term. score will be caculated in TF/IDF
+Full-text: (high level)judge --> analyze --> use low level query + assemble +score
+for non-filter, we'd better not use term-based query
+
+#match query
+check type --> analyze --> term query --> calculate score TF/IDF * Len Norm
+
+#Multiword Queries
+just combine with bool
+improving precesion:
+{
+    "query": {
+        "match": {
+            "title": {      
+                "query":    "BROWN DOG!",
+                "operator": "and"
+            }
+        }
+    }
+}
+{
+  "query": {
+    "match": {
+      "title": {
+        "query":                "quick brown dog",
+        "minimum_should_match": "75%"
+      }
+    }
+  }
+}
+
+#Combining Queries
+diff from filter combine, "should" are not required fileds, they just increase relevance
+calculate score: add up all scores of "must" and "should", and divide them by "must" "should" clause count
+precision: no "should" must needed, but if no "must" at least one field in "should" is needed
+{
+  "query": {
+    "bool": {
+      "should": [
+        { "match": { "title": "brown" }},
+        { "match": { "title": "fox"   }},
+        { "match": { "title": "dog"   }}
+      ],
+      "minimum_should_match": 2 # at least how many clauses should match
+    }
+  }
+}
+
+#How match Uses bool
+{
+    "match": { "title": "brown fox"}
+}
+<=>
+{
+  "bool": {
+    "should": [
+      { "term": { "title": "brown" }},
+      { "term": { "title": "fox"   }}
+    ]
+  }
+}
+{
+    "match": {
+        "title": {
+            "query":    "brown fox",
+            "operator": "and"
+        }
+    }
+}
+<=>
+{
+  "bool": {
+    "must": [
+      { "term": { "title": "brown" }},
+      { "term": { "title": "fox"   }}
+    ]
+  }
+}
+{
+    "match": {
+        "title": {
+            "query":                "quick brown fox",
+            "minimum_should_match": "75%"
+        }
+    }
+}
+<=>
+{
+  "bool": {
+    "should": [
+      { "term": { "title": "brown" }},
+      { "term": { "title": "fox"   }},
+      { "term": { "title": "quick" }}
+    ],
+    "minimum_should_match": 2 
+  }
+}
+
+#Boosting Query Clauses
+{
+    "query": {
+        "bool": {
+            "must": {
+                "match": {  
+                    "content": {
+                        "query":    "full text search",
+                        "operator": "and"
+                    }
+                }
+            },
+            "should": [
+                { "match": {
+                    "content": {
+                        "query": "Elasticsearch",
+                        "boost": 3 
+                    }
+                }},
+                { "match": {
+                    "content": {
+                        "query": "Lucene",
+                        "boost": 2 
+                    }
+                }}
+            ]
+        }
+    }
+}
+*boost default is one
+*boost in [0,1) is to decrease the weight
+
+#Controlling Analysis
+index analyzer finding order: field --> index --> global default(standard)
+query analyzer finding order: query --> field --> index --> global default(standard)
+full query analyzer finding order:
+	The analyzer defined in the query itself, else
+	The search_analyzer defined in the field mapping, else
+	The analyzer defined in the field mapping, else
+	The analyzer named default_search in the index settings, which defaults to
+	The analyzer named default in the index settings, which defaults to
+	The standard analyzer
+
+#Relevance Is Broken!
+IDF is calculated based on shard not index, if the docs are evenly distributed between shards, the result may not correct sorted.
+we can use ?search_type=dfs_query_then_fetch to use global IDF, but don't use it in production
+
+
+
+
+
+
+Multifield Search(Advanced Search)
+
+#Multiple Query Strings
+when we know which term should belong to which field
+bool score: add, multiply match clauses, divide total clauses
+same level of bool divide the weight
+boost:
+{ "match": { 
+            "title":  {
+              "query": "War and Peace",
+              "boost": 2
+        }}}
+
+#Single Query String
+Best fields
+Most fields
+Cross fields
+
+#Best fields
+“Brown fox” -->
+{
+    "query": {
+        "bool": {
+            "should": [
+                { "match": { "title": "Brown fox" }},
+                { "match": { "body":  "Brown fox" }}
+            ]
+        }
+    }
+}
+makes
+"title": "brown",
+"body":  "Brown"
+higher than
+{
+    "title": "",
+    "body":  "brown fox"
+}
+but we want best field
+dis_max:
+{
+    "query": {
+        "dis_max": {
+            "queries": [
+                { "match": { "title": "Brown fox" }},
+                { "match": { "body":  "Brown fox" }}
+            ]
+        }
+    }
+}
+it will not combine scores, but will choose best matching query as the score of one doc
+
+#Tuning Best Fields Queries
+{
+    "query": {
+        "dis_max": {
+            "queries": [
+                { "match": { "title": "Quick pets" }},
+                { "match": { "body":  "Quick pets" }}
+            ],
+            "tie_breaker": 0.3
+        }
+    }
+}
+get best matching clause _score + other matching clauses _score * 0.3 -> normalize
+
+#multi_match Query
+and:conjunction
+or:disjunction
+since dis_max use same query on different fields, it's redundant
+we can use multi_match, best_fields is default
+{
+    "multi_match": {
+        "query":                "Quick brown fox",
+        "type":                 "best_fields", 
+        "fields":               [ "title", "body" ],
+        "tie_breaker":          0.3,
+        "minimum_should_match": "30%" 
+    }
+}
+wildcard
+{
+    "multi_match": {
+        "query":  "Quick brown fox",
+        "fields": "*_title"
+    }
+}
+boost
+{
+    "multi_match": {
+        "query":  "Quick brown fox",
+        "fields": [ "*_title", "chapter_title^2" ] 
+    }
+}
+
+#Most Fields
+main field(broad) and signal fields(narrower, just for adding score)
+multifield mapping:
+{
+    "settings": { "number_of_shards": 1 }, 
+    "mappings": {
+        "my_type": {
+            "properties": {
+                "title": { 
+                    "type":     "string",
+                    "analyzer": "english", #stemmed
+                    "fields": {
+                        "std":   { 
+                            "type":     "string",
+                            "analyzer": "standard" #not stemmed
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+-->
+{
+   "query": {
+        "multi_match": {
+            "query":  "jumping rabbits",
+            "type":   "most_fields", 
+            "fields": [ "title^10", "title.std" ]
+        }
+    }
+}
+use "bool"
+
