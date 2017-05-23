@@ -641,5 +641,248 @@ multifield mapping:
         }
     }
 }
-use "bool"
+use "bool" should
 
+#Cross-fields Entity Search
+A Naive Approach
+{
+  "query": {
+    "multi_match": {
+      "query":       "Poland Street W1V",
+      "type":        "most_fields",
+      "fields":      [ "street", "city", "country", "postcode" ]
+    }
+  }
+}
+
+#Field-Centric Queries(but we want term-centric queries)
+Problem 1: Matching the Same Word in Multiple Fields
+Problem 2: Trimming the Long Tail
+  operator and
+  minimum_should_match n
+Problem 3: Term Frequencies
+  some fields have high IDF on some words
+Solution: combine the fields
+
+#Custom _all Fields(index time solution)
+copy_to 
+{
+    "mappings": {
+        "person": {
+            "properties": {
+                "first_name": {
+                    "type":     "string",
+                    "copy_to":  "full_name" 
+                },
+                "last_name": {
+                    "type":     "string",
+                    "copy_to":  "full_name" 
+                },
+                "full_name": {
+                    "type":     "string"
+                }
+            }
+        }
+    }
+}
+we cannot copy from a multi-field, since its just a different way of storing the field, it has no source
+
+#cross-fields Queries(search time solution)
+GET /_validate/query?explain
+{
+    "query": {
+        "multi_match": {
+            "query":       "peter smith",
+            "type":        "cross_fields", 
+            "operator":    "and",
+            "fields":      [ "first_name", "last_name" ]
+        }
+    }
+}
+-->
++blended("peter", fields: [first_name, last_name])
++blended("smith", fields: [first_name, last_name])
+use min of IDF of two fields
+if we added the title field to the preceding query (assuming it uses a different analyzer)
+(+title:peter +title:smith)
+(
+  +blended("peter", fields: [first_name, last_name])
+  +blended("smith", fields: [first_name, last_name])
+)
+advantage over custom _all field:Per-Field Boosting
+GET /books/_search
+{
+    "query": {
+        "multi_match": {
+            "query":       "peter smith",
+            "type":        "cross_fields",
+            "fields":      [ "title^2", "description" ] 
+        }
+    }
+}
+
+#Exact-Value Fields
+don't use not_analyzed in multi-field search, it can never be found
+
+
+
+
+
+
+Proximity Matching(phrase matching)
+
+#Phrase Matching
+{
+    "query": {
+        "match_phrase": {
+            "title": "quick brown fox"
+        }
+    }
+}
+contains all terms and in same relative positions
+
+#Mixing It Up
+slop
+{
+    "query": {
+        "match_phrase": {
+            "title": {
+                "query": "quick fox",
+                "slop":  1
+            }
+        }
+    }
+}
+slop means how many steps of movement from one phrase to another one
+
+#Multivalue Fields
+array elements are adjacent in position
+PUT /my_index/_mapping/groups 
+{
+    "properties": {
+        "names": {
+            "type":                "string",
+            "position_increment_gap": 100
+        }
+    }
+}
+to make position increase more for array element
+
+#Closer Is Better
+closer has higher _score
+
+#Proximity for Relevance
+all terms must show up is too restrictive.
+{
+  "query": {
+    "bool": {
+      "must": {
+        "match": { 
+          "title": {
+            "query":                "quick brown fox",
+            "minimum_should_match": "30%"
+          }
+        }
+      },
+      "should": {
+        "match_phrase": { 
+          "title": {
+            "query": "quick brown fox",
+            "slop":  50
+          }
+        }
+      }
+    }
+  }
+}
+this may be better
+
+#Improving Performance
+proximity matching is expensive
+The rescore phase allows you to apply a more expensive scoring algorithm—like a phrase query—to just the top K results from each shard
+{
+    "query": {
+        "match": {  
+            "title": {
+                "query":                "quick brown fox",
+                "minimum_should_match": "30%"
+            }
+        }
+    },
+    "rescore": {
+        "window_size": 50, # 50 top result per shard
+        "query": {         
+            "rescore_query": {
+                "match_phrase": {
+                    "title": {
+                        "query": "quick brown fox",
+                        "slop":  50
+                    }
+                }
+            }
+        }
+    }
+}
+
+#Finding Associated Words
+index shingles instead of single words
+PUT /my_index
+{
+    "settings": {
+        "number_of_shards": 1,  
+        "analysis": {
+            "filter": {
+                "my_shingle_filter": {
+                    "type":             "shingle",
+                    "min_shingle_size": 2, 
+                    "max_shingle_size": 2, 
+                    "output_unigrams":  false   # by default bigrams also include unigrams, but we want a seperate one
+                }
+            },
+            "analyzer": {
+                "my_shingle_analyzer": {
+                    "type":             "custom",
+                    "tokenizer":        "standard",
+                    "filter": [
+                        "lowercase",
+                        "my_shingle_filter" 
+                    ]
+                }
+            }
+        }
+    }
+}
+PUT /my_index/_mapping/my_type
+{
+    "my_type": {
+        "properties": {
+            "title": {
+                "type": "string",
+                "fields": {
+                    "shingles": {
+                        "type":     "string",
+                        "analyzer": "my_shingle_analyzer"
+                    }
+                }
+            }
+        }
+    }
+}
+GET /my_index/my_type/_search
+{
+   "query": {
+      "bool": {
+         "must": {
+            "match": {
+               "title": "the hungry alligator ate sue"
+            }
+         },
+         "should": {
+            "match": {
+               "title.shingles": "the hungry alligator ate sue"
+            }
+         }
+      }
+   }
+}
+more at index time -> less at search time
