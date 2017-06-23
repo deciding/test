@@ -886,3 +886,361 @@ GET /my_index/my_type/_search
    }
 }
 more at index time -> less at search time
+
+
+*
+EmployeeMasterSearchController.search
+  MasterSearchEntity
+    MasterSearchConditionsEntity
+->
+EmployeeMasterSearchServiceImpl.search
+  EmployeeMasterFullTextSearchQuery
+    searchTextFields/searchAdvanced ?just for mapping text to field instead of group?
+    searchBaseDate/searchLatestHistory
+    setFacetTypeSetting ?why seperate termfilter and rangefilter? post_filter should only be used for differential filtering
+  EmployeeMasterDocSearchAccessImpl.search
+    DocSearcherFactory.create(DocSearchTypeSetting)
+      typeSettingInfoGetter.getTypeSettingInfo(Type) -> TypeSettingInfo
+      create DocSearcher using above two
+    DocSearcher.search(keyword)
+      parse(keyword) -> DocSearchWords
+      SearchRequestCreator.create(TypeSettingInfo, DocSearchTypeSetting, DocSearchWords) & set ScoringType inside-> SearchRequest : keyword match_prefix(query) or match(correct) of the group & filter &postFilter &aggs
+      FullTextSearchSearchRequest(TypeSettingInfo, SearchRequest)
+      FullTextSearchManagerImpl.search(FullTextSearchSearchRequest)
+        TypeSettingInfo -> EsTypeAddress
+        SearchRequest&EsTypeAddress->ElasticsearchSearchRequest
+        ElasticsearchSearchRequest&EsTypeAddress -> ElasticsearchSearchResponse hits, sort, aggs, primary key ->id
+        TypeSettingInfo,TypeSettingInfo,ElasticsearchSearchResponse and Type,Map<String, FieldTypeInfo> inside->FullTextSearchResponse
+        ResponseMapper.convert(FullTextSearchResponse)
+    List<FullTextSearchHit> FullTextSearchResponseImpl.getHits()
+      FullTextSearchHitField FullTextSearchHit.getField("") .getValue() -> EmployeeMasterId,EmployeeMasterPartialId,EmployeeMasterEntity
+    FacetResponseMapper.convert(FullTextSearchResponseImpl.getAggregations()) -> Map<String, List<FacetBucketEntity>>
+    FacetBucketEntity, EmployeeMasterId, EmployeeMasterPartialId, EmployeeMasterEntity, FullTextSearchResponseImpl.getTotalHits() -> EmployeeMasterSearchResultEntity
+    EmployeeMasterServiceImpl.getBy(List<EmployeeMasterId>) -> List<EmployeeMasterDto>
+    EmployeeMasterServiceImpl.combineToEntities(List<EmployeeMasterDto>, EmployeeMasterSearchResultEntity), just to reserve DepartmentIdReference in entity
+->
+EmployeeMasterServiceImpl.getTextResource()
+listVo,facetVo
+**constructFacetSearchVo: Group, Item, CheckItem, FacetBucketEntity, FacetedNavigationVo
+EmployeeMasterServiceImpl.constructFacetSearchVo(MasterSearchEntity, EmployeeMasterSearchResultEntity)
+  MasterSearchEntity -> Map<String, MasterSearchConditionsEntity>
+  getPositionGroup(Map<String, MasterSearchConditionsEntity>, Map<String, List<FacetBucketEntity>>)
+    getGroup(Map<String, MasterSearchConditionsEntity>, Map<String, List<FacetBucketEntity>>, String key, String name, Function<FacetBucketEntity, String>)
+      result->buckets, condition->FacetedSearchEntity(selectedValue,selectedValues,MasterSearchConditionsEntity), check buckets filtered by the condition ?filtered checked open?
+      toCheckItem(FacetBucketEntity, String key, List<String> selectedValues, Function<FacetBucketEntity, String>toCheckboxText)
+        Id value checked text -> CheckItem
+  FacetedNavigationVo(text, groups, nofiltered)
+->
+EmployeeMasterServiceImpl.getFilterValues(MasterSearchEntity, *EmployeeMasterSearchResultEntity)
+  List<MasterSearchConditionsEntity> -> MasterSearchConditionsEntity.getParamValues()
+
+
+?searchLatestHistory 1-1 map?: partialId:null
+?initial check range daye_range? MasterSearchConditionsEntity
+?selectedValue, selectedValues?
+?filtered checked?: if not specify filter in this filter group
+
+
+
+*
+kva.insert -> MessageKeyValueAccess.insert -> MessageKeyValueAccessHelp.produceMessageForUpdateOperation
+-> (if canPublishMessage which means the class is in the whitelist) generate EntityModificationMessage & CompanyMessageQueue(InMemoryImpl).produceMessage push to kafka
+
+--> AutoIndexMessageConsumerImpl.consume(EntityModificationMessage) -> indexTool.getAllGeneratorsForBaseEntity(EmployeeMasterDto.class) 
+-> EmpAiGeneratorImpl.generateIfMatches ->generate -> responseToUpdateByOperation -> get the EmployeeMasterDto entity
+-> for each entity, get the indexEntities(index,forward,backward)
+  delete old forward and index
+  add index
+  update forward and backward
+-> someone generate IndexRequestMessage
+
+--> BlockwiseIndexingMessageConsumerImpl.consume(List<IndexRequestMessage>) -> IndexingMessageConsumeLogic.processIndexRequests(List<IndexRequestMessage>)
+
+
+
+
+MasterSearchQuery<FullTextSearchResponse>
+  keyword
+  DocSearchTypeSetting<T>
+  filters
+searchAdvanced?query.searchAdvanced(masterSearchEntity.getTextSearchFieldMap());
+setAggregations
+setFacetTypeSetting MasterSearchConditionsEntity.FacetParam termfilter rangefilter
+
+DocSearcher<T> DocSearcherFactory
+FullTextSearchSearchRequest(typeSettingInfo=com.worksap.company.framework.elasticsearch.base.type.service.TypeSettingInfo@7cce5f79, condition=SearchRequest(isExplain=false, from=0, size=15, fetchFields=[key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en, start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date, department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en], highlightFields=null, sort=[
+"key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.exact"{
+  "order" : "asc"
+}, 
+"start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date"{
+  "order" : "desc"
+}], query={
+  "bool" : {
+    "must" : {
+      "bool" : {
+        "must" : [ {
+          "bool" : {
+            "should" : [ {
+              "constant_score" : {
+                "filter" : {
+                  "bool" : {
+                    "should" : {
+                      "match_prefix" : {
+                        "uf-docsearch-MIDDLE-words_en-1-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.query" : {
+                          "query" : "C120",
+                          "operator" : "or"
+                        }
+                      }
+                    }
+                  }
+                },
+                "boost" : 1.9
+              }
+            }, {
+              "constant_score" : {
+                "filter" : {
+                  "bool" : {
+                    "should" : {
+                      "match" : {
+                        "uf-docsearch-MIDDLE-words_en-1-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.correct" : {
+                          "query" : "C120"
+                        }
+                      }
+                    }
+                  }
+                },
+                "boost" : 19.0
+              }
+            } ]
+          }
+        }, {
+          "bool" : {
+            "should" : [ {
+              "constant_score" : {
+                "filter" : {
+                  "bool" : {
+                    "should" : {
+                      "match_prefix" : {
+                        "uf-docsearch-MIDDLE-words_en-1-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.query" : {
+                          "query" : "Developer",
+                          "operator" : "or"
+                        }
+                      }
+                    }
+                  }
+                },
+                "boost" : 1.9
+              }
+            }, {
+              "constant_score" : {
+                "filter" : {
+                  "bool" : {
+                    "should" : {
+                      "match" : {
+                        "uf-docsearch-MIDDLE-words_en-1-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.correct" : {
+                          "query" : "Developer"
+                        }
+                      }
+                    }
+                  }
+                },
+                "boost" : 19.0
+              }
+            } ]
+          }
+        } ],
+        "minimum_should_match" : "0"
+      }
+    },
+    "filter" : {
+      "bool" : {
+        "should" : {
+          "term" : {
+            "latest_history-COM_BOOTCAMP_EMPLOYEE_MASTER--boolean" : true
+          }
+        }
+      }
+    }
+  }
+}, postFilter={
+  "bool" : {
+    "should" : {
+      "term" : {
+        "position-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en.exact" : "Developer"
+      }
+    }
+  }
+}, aggregations=[org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder@223170f3, org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder@56b28f82, org.elasticsearch.search.aggregations.bucket.filter.FilterAggregationBuilder@e0c3d84], routing=null, backetValueConverterMap={disabled=[com.worksap.company.framework.elasticsearch.basic.docsearch.group.FacetRequestComposer$$Lambda$862/437250993@2a86530a, com.worksap.company.framework.elasticsearch.base.type.TermsAggregationValueResolverFactoryImpl$$Lambda$847/460784738@3190841], position=[com.worksap.company.framework.elasticsearch.basic.docsearch.group.FacetRequestComposer$$Lambda$862/437250993@2a86530a, com.worksap.company.framework.elasticsearch.base.type.TermsAggregationValueResolverFactoryImpl$$Lambda$847/460784738@3190841], department_id_reference=[com.worksap.company.framework.elasticsearch.basic.docsearch.group.FacetRequestComposer$$Lambda$862/437250993@2a86530a, com.worksap.company.framework.elasticsearch.base.type.TermsAggregationValueResolverFactoryImpl$$Lambda$847/460784738@3190841]}, objectTypeHitFieldWrapperFactory=com.worksap.company.framework.elasticsearch.base.core.ObjectTypeHitFieldWrapperFactoryImpl@4115593f, locales=[en], isEnableLanguageAcrossSearch=true))
+
+{
+  "took" : 1,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 1,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 3,
+    "max_score" : null,
+    "hits" : [ {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120=20170425",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17281,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HR",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120"
+      },
+      "sort" : [ "C120", 17281 ]
+    }, {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120-1=20170425",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17281,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HUE",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120-1"
+      },
+      "sort" : [ "C120-1", 17281 ]
+    }, {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120-2=20170509",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17295,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HR",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120-2"
+      },
+      "sort" : [ "C120-2", 17295 ]
+    } ]
+  },
+  "aggregations" : {
+    "disabled" : {
+      "doc_count" : 3,
+      "disabled" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "False",
+          "doc_count" : 3
+        } ]
+      }
+    },
+    "position" : {
+      "doc_count" : 3,
+      "position" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "Developer",
+          "doc_count" : 3
+        } ]
+      }
+    },
+    "department_id_reference" : {
+      "doc_count" : 3,
+      "department_id_reference" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "HR",
+          "doc_count" : 2
+        }, {
+          "key" : "HUE",
+          "doc_count" : 1
+        } ]
+      }
+    }
+  }
+}
+
+
+ElasticsearchSearchResponse(response={
+  "took" : 3,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 1,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : 3,
+    "max_score" : null,
+    "hits" : [ {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120=20170425",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17281,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HR",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120"
+      },
+      "sort" : [ "C120", 17281 ]
+    }, {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120-1=20170425",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17281,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HUE",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120-1"
+      },
+      "sort" : [ "C120-1", 17281 ]
+    }, {
+      "_index" : "company-hue-com_bootcamp_employee_master",
+      "_type" : "COM_BOOTCAMP_EMPLOYEE_MASTER",
+      "_id" : "C120-2=20170509",
+      "_score" : null,
+      "_source" : {
+        "start_date-COM_BOOTCAMP_EMPLOYEE_MASTER--local_date" : 17295,
+        "department_id_reference-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "HR",
+        "key-COM_BOOTCAMP_EMPLOYEE_MASTER--words_en" : "C120-2"
+      },
+      "sort" : [ "C120-2", 17295 ]
+    } ]
+  },
+  "aggregations" : {
+    "disabled" : {
+      "doc_count" : 3,
+      "disabled" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "False",
+          "doc_count" : 3
+        } ]
+      }
+    },
+    "position" : {
+      "doc_count" : 3,
+      "position" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "Developer",
+          "doc_count" : 3
+        } ]
+      }
+    },
+    "department_id_reference" : {
+      "doc_count" : 3,
+      "department_id_reference" : {
+        "doc_count_error_upper_bound" : 0,
+        "sum_other_doc_count" : 0,
+        "buckets" : [ {
+          "key" : "HR",
+          "doc_count" : 2
+        }, {
+          "key" : "HUE",
+          "doc_count" : 1
+        } ]
+      }
+    }
+  }
+})
