@@ -1,0 +1,5 @@
+No leader or master/slave, just coordination
+mem: write-> -> 	memtable
+			|			|
+			v			v
+disk:	ro,commitlog ro,sstable
