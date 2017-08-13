@@ -1,5 +1,16 @@
 No leader or master/slave, just coordination
+it means each replica is same and can do both r/w
 mem: write-> -> 	memtable
-			|			|
+			|			|flush
 			v			v
 disk:	ro,commitlog ro,sstable
+timstamp tombstone -> compaction of small sstables when disk full
+read: merge unmerged sstables in memory as well as memtable, no. of sstables affect speed
+read_repair_chance: 10% by default when <ALL consistency level, the chance to repair other nodes of the agreed data
+
+killrvideo:
+1. scalability
+2. reliability, downtime
+3. ease to use
+
+shard -> failure point -> replica -> failover, sync 
