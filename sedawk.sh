@@ -46,7 +46,7 @@ sed -f $prog $file
 awk -F: 'BEGIN{ FS="\t+" };$1 !~ /the/ {print $1,$2, $(3+5) };END{}'
 #print comma, space
 #printf("",)
-#print by default print this line
+#print by default print this line,$0
 # y=x++ and many other operations
 #System vars: FS, OFS, NF, RS, ORS, NR, FNR, FILENAME, CONVFMT(num->str, %.6g), ARGV[], ENVIRON[]
 #space is string concatention
@@ -58,7 +58,7 @@ awk -v var=value 'script' inputfile #passing param before reading inputs
 #delete arr[n]
 #next: get next record and start over
 #exit n: go to END
-#functions: match(str,regex[,arrGroup]), sub/gsub(regex,replacement[,target]) & \\&
+#functions: match(str,regex[,arrGroup]) RSTART RLENGTH, sub/gsub(regex,replacement[,target]) & \\&
 #functions: split(str, arrRes[, sep, arrSepRes]), substr(str,start[,len])
 #functions
 cos(x)
@@ -108,3 +108,9 @@ tolower(s)
 toupper(s)
 	Translates all lowercase characters in string s to uppercase and returns the new
 	string.
+
+#self defined functions
+#function name (parameter-list) {
+# 	statements
+# 	return expression
+#}
