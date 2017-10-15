@@ -1,3 +1,4 @@
+all types' info are static, not dynamic
 Field: getDeclaringClass, getType, getGenericType
 GenericDeclaration(Class, Executable, Method, Constructor): getTypeParameters(TypeVariable)
 Method: getGenricReturnType, getGenericParamterTypes, getTypeParameters
