@@ -1,0 +1,22 @@
+Field: getDeclaringClass, getType, getGenericType
+GenericDeclaration(Class, Executable, Method, Constructor): getTypeParameters(TypeVariable)
+Method: getGenricReturnType, getGenericParamterTypes, getTypeParameters
+Constructor: getGenericParamterTypes, getTypeParameters
+Class: getGenericInterfaces, getGenericSuperClass, getTypeParameters
+
+GenericArrayType.getGenericComponentType
+ParameterizedType.getActualTypeArguments, getOwnerType, getRawType
+TypeVariable.getBounds, getAnnotatedBounds, getGenericDeclaration, getName
+WildcardType.getLowerBounds, getUpperBounds
+
+Gson, GsonBuilder
+JsonElement, JsonObject, JsonArray, JsonPrimitive, JsonNull
+GsonBuilder.registerTypeAdapter(class, JsonSerializer), GsonBuilder.create(), Gson.fromJson(reader, class) 
+JsonSerializer(JsonElement, Type, JsonSerializerContext)
+	getAsJsonObject(), get().getAs()
+	JsonserializerContext.deserialize(JsonElement, class)
+JsonDeserializer(JsonElement, Type, JsonSerializerContext)
+	addProperty("", prim+String+Number)
+	add("", JsonElement)
+	JsonserializerContext.serialize(Object)
+@SerializeName @Expose(serialize=true, deserialize=false),builder.excludeFieldsWithoutExposeAnnotation(); @Since @Until,builder.setVersion(1.0);
