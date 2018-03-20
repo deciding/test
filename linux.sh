@@ -6,6 +6,8 @@ type -aPpft
 1. brace expansion
 a{b,c,d}e
 {1..10..2}
+echo {file1,file2}\ :{\ A," B",' C'}
+file1 : A file1 : B file1 : C file2 : A file2 : B file2 : C
 
 2. tilde expansion
 ~
@@ -91,7 +93,60 @@ echo $(( 2#101011 )) base conversion
 \x = 'x'
 
 : true are builtin of NOP, can be used as "pass" in python
+also used when dont want to execute following result as command 
+: $str
+${str-$default} ${str=$default} ${str+$replace} ${str?err}
+using : above will also check "declared null" str
+: > data.xxx # Same effect as
+cat /dev/null >data.xxx # However, this does not fork a new process, since ":" is a builtin.
+: >> data.xxx # create file
+$PATH separator
 
+! reverse test and exit status of command 
+indirect reference: eval a=\$$x, a=$(!x)
+
+(a=hello; echo $a) shell -> shell script -> subshells
+
+code block
+{
+read line1
+read line2
+} < $File
+ls . | xargs -i -t cp ./{} $1
+
+test whether command exist:
+type bogus_command &>/dev/null
+echo $?
+
+&> stdout+stderr
+>&2 stdout > stderr
+>> create if not exist
+[i]<>filename opens file filename for reading and writing, and assigns file descriptor i to it. If
+filename does not exist, it is created i=0~9
+
+<< here doc for interactive or stream input
+<<< strpped form of here doc, here string
+
+\<, \> regex word boundary
+
+tr 'a-z' 'A-Z' # Letter ranges must be quoted
+pipe is subprocess, cannot have variable altered
+broken pipe will send SIGPIPE signal
+
+>| force overwritten even if bash -C
+
+for i in 1 2 3 4 5 6 7 8 9 10
+do
+echo -n "$i "
+done &
+wait
+loop in background
+
+rm -- -badname #end of option
+set -- $variable #set positional params
+
+- change to stdin stdout
+(cd /source/directory && tar cf - . ) | (cd /dest/directory && tar xpvf -)
 
 printf "%s %s" $1 $2 
 [while IFS=:] read -rasn:put $1 $2 [; do ; done] <$file
