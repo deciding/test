@@ -147,6 +147,26 @@ set -- $variable #set positional params
 
 - change to stdin stdout
 (cd /source/directory && tar cf - . ) | (cd /dest/directory && tar xpvf -)
+find . -mtime -1 -type f -print0 | xargs -0 tar rvf "$archive.tar" # is same as following command
+find . -mtime -1 -type f -exec tar rvf "$archive.tar" '{}' \; #portable to other UNIX flavors, but much slower.
+cd - # go to prev working dir, $OLDPWD, instead of dirs
+
+=~ regex
+ctrl + 
+A E line start line end
+B F backward forward
+D delete cur char
+H backspace
+I K indent, delete behind
+J O newline
+L clear
+M carriage with cursor not moving
+R P N retrieve hist, prev hist, next hist
+S Q stop stdin and resume
+T replace prev char
+U W Y delete front, delete front word, paste deleted
+V permit enter control char
+C Z break, pause foreground
 
 printf "%s %s" $1 $2 
 [while IFS=:] read -rasn:put $1 $2 [; do ; done] <$file
